@@ -1,103 +1,174 @@
-import Image from "next/image";
+'use client'; // This directive is crucial for client-side components
+
+import { useState } from 'react'; // For managing component state.
+import { useRouter } from 'next/navigation'; // For programmatic navigation (redirects).
+import { useSession, signOut } from 'next-auth/react'; // For authentication session management.
+import { nanoid } from 'nanoid'; // To generate a unique short ID for new meetings.
+
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const { data: session, status } = useSession(); // Get session data and loading status.
+  const router = useRouter(); // Initialize Next.js router.
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const [meetingTitle, setMeetingTitle] = useState(''); // State for the new meeting title input.
+  const [joinMeetingId, setJoinMeetingId] = useState(''); // State for joining an existing meeting.
+  const [createError, setCreateError] = useState(''); // State for displaying creation errors.
+  const [createSuccess, setCreateSuccess] = useState(''); // New state for displaying creation success messages.
+  const [joinError, setJoinError] = useState(''); // State for displaying join errors.
+
+  // Handle creating a new meeting
+  const handleCreateMeeting = async (e) => {
+    e.preventDefault(); // Prevent default form submission.
+    setCreateError(''); // Clear previous errors.
+    setCreateSuccess(''); // Clear previous success messages.
+
+    // Basic validation for meeting title
+    if (!meetingTitle.trim()) {
+      setCreateError('Meeting title cannot be empty.');
+      return;
+    }
+
+    // Ensure user is authenticated before attempting to create a meeting
+    if (status === 'unauthenticated' || !session) {
+      setCreateError('Authentication required to create a meeting. Please sign in.');
+      // Optional: Redirect to sign-in page if not authenticated
+      // router.push('/api/auth/signin');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/meetings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title: meetingTitle }), // Send the meeting title to the API.
+      });
+
+      const data = await response.json(); // Parse the response from the API.
+
+      if (response.ok) {
+        // If the meeting was created successfully (2xx status code)
+        setCreateSuccess(`Meeting "${data.data.title}" created successfully! ID: ${data.data.shortId}`);
+        setMeetingTitle(''); // Clear the input field.
+        // Redirect to the newly created meeting page after a short delay
+        setTimeout(() => {
+          router.push(`/meeting/${data.data.shortId}`);
+        }, 1500); // Redirect after 1.5 seconds
+      } else {
+        // If there was an error from the API (e.g., 400, 401, 500)
+        setCreateError(data.message || 'Failed to create meeting.');
+      }
+    } catch (error) {
+      // Catch network errors or unexpected issues
+      console.error('Error creating meeting:', error);
+      setCreateError('An unexpected error occurred. Please try again.');
+    }
+  };
+
+  // Handle joining an existing meeting
+  const handleJoinMeeting = (e) => {
+    e.preventDefault();
+    setJoinError('');
+
+    if (!joinMeetingId.trim()) {
+      setJoinError('Please enter a Meeting ID.');
+      return;
+    }
+
+    // Redirect to the meeting page using the entered ID
+    router.push(`/meeting/${joinMeetingId.trim()}`);
+  };
+
+  // Display a loading state while session is being loaded
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
+        Loading authentication...
+      </div>
+    );
+  }
+
+  // Main UI rendering
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-4">
+      {/* User authentication status display */}
+      <div className="absolute top-4 right-4 flex items-center space-x-4">
+        {session ? (
+          <>
+            <span className="text-gray-300">Welcome, {session.user.name || session.user.email}!</span>
+            <button onClick={() => signOut()} className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-md transition duration-200">
+              Sign Out
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="text-gray-300">Not signed in</span>
+            <button onClick={() => router.push('/api/auth/signin')} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition duration-200">
+              Sign In
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Main Card for Meeting Actions */}
+      <div className="w-full max-w-md bg-gray-800 text-white border-gray-700 shadow-lg p-6 rounded-lg">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold mb-2">Start or Join a Meeting</h1>
+          <p className="text-gray-400">
+            Create a new instant meeting or join an existing one.
+          </p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        <div className="space-y-6">
+          {/* Create New Meeting Section */}
+          <form onSubmit={handleCreateMeeting} className="space-y-4">
+            <h2 className="text-xl font-semibold text-blue-400 border-b border-gray-700 pb-2">Create a New Meeting</h2>
+            <label htmlFor="meeting-title" className="text-gray-300">Meeting Title</label>
+            <input
+              id="meeting-title"
+              type="text"
+              placeholder="e.g., Daily Standup"
+              value={meetingTitle}
+              onChange={(e) => setMeetingTitle(e.target.value)}
+              className="w-full bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 p-2 rounded-md"
+            />
+            {createError && <p className="text-red-400 text-sm mt-2">{createError}</p>}
+            {createSuccess && <p className="text-green-400 text-sm mt-2">{createSuccess}</p>}
+            <button
+              type="submit"
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 rounded-md transition duration-200"
+              disabled={status === 'unauthenticated' || !session} // Disable if not authenticated
+            >
+              Create Meeting
+            </button>
+          </form>
+
+          <div className="flex items-center justify-center my-6">
+            <span className="text-gray-500 text-lg">OR</span>
+          </div>
+
+          {/* Join Existing Meeting Section */}
+          <form onSubmit={handleJoinMeeting} className="space-y-4">
+            <h2 className="text-xl font-semibold text-purple-400 border-b border-gray-700 pb-2">Join an Existing Meeting</h2>
+            <label htmlFor="meeting-id" className="text-gray-300">Enter Meeting ID</label>
+            <input
+              id="meeting-id"
+              type="text"
+              placeholder="e.g., abcdef123"
+              value={joinMeetingId}
+              onChange={(e) => setJoinMeetingId(e.target.value)}
+              className="w-full bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 p-2 rounded-md"
+            />
+            {joinError && <p className="text-red-400 text-sm mt-2">{joinError}</p>}
+            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-md transition duration-200">
+              Join Meeting
+            </button>
+          </form>
+        </div>
+        <div className="text-center text-gray-500 text-sm mt-6">
+          <p>&copy; {new Date().getFullYear()} NextMeet. All rights reserved.</p>
+        </div>
+      </div>
     </div>
   );
 }
